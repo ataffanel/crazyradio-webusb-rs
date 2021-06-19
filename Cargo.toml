@@ -5,12 +5,12 @@ authors = ["Arnaud Taffanel <arnaud@taffanel.org>"]
 edition = "2018"
 
 [dependencies]
-thiserror = "1"
-wasm-bindgen-futures = "0.4.24"
-serde_json = "1.0.64"
-wasm-bindgen = { version = "0.2.74", features = ["serde-serialize"] }
-js-sys = "0.3.51"
-futures-util = "0.3.15"
+thiserror = "1.0"
+wasm-bindgen-futures = "0.4"
+serde_json = "1.0"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+js-sys = "0.3"
+futures-util = "0.3"
 async-std = "1"
 
 [dependencies.web-sys]
