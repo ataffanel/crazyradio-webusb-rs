@@ -1,12 +1,12 @@
-//!  Driver to use Crazyradio in Rust using the WebUSB API.
+//! # Crazyradio driver for Rust using the WebUSB API.
 //!
 //! This driver is intended to be used when targetting the web browser with Wasm.
-//! It replicates the async API subset of the native Crazyradio crate.
+//! It replicates the async API subset of the native [crazyradio crate](https://crates.io/crates/crazyradio).
 //!
 //! The main intention of this crate is to be used as a compile-time replacement
 //! for the native [crazyradio](https://github.com/ataffanel/crazyradio-rs) crate in 
-//! the [crazyflie-link](https://github.com/ataffanel/crazyflie-link-rs) crate. To be used in
-//! that way, the async functions to create the crazyradio can be used and then
+//! the [crazyflie-link](https://github.com/ataffanel/crazyflie-link-rs) crate.
+//! The async functions to create the crazyradio can be used and then
 //! the [Crazyradio] object must be passed and used though the [SharedCrazyradio]
 //! object:
 //!
@@ -59,6 +59,7 @@ impl SharedCrazyradio {
     ) -> Result<(Ack, Vec<u8>)> {
         let mut radio = self.radio.lock().await;
         radio.set_channel_async(channel).await?;
+        radio.set_address_async(&address).await?;
         radio.send_packet_async(payload.clone()).await
     }
 
@@ -76,6 +77,7 @@ impl SharedCrazyradio {
 
         for channel in start..=stop {
             let mut radio = self.radio.lock().await;
+            radio.set_address_async(&address).await?;
             radio.set_channel_async(channel.try_into()?).await?;
             let (ack, _) = radio.send_packet_async(payload.clone()).await?;
             if ack.received {
@@ -90,10 +92,11 @@ impl SharedCrazyradio {
 pub struct Crazyradio {
     device: web_sys::UsbDevice,
     current_channel: Option<Channel>,
+    current_address: Option<[u8; 5]>,
 }
 
-// unsafe impl Send for Crazyradio {}
-// unsafe impl Sync for Crazyradio {}
+const SET_RADIO_CHANNEL: u8 = 0x01;
+const SET_RADIO_ADDRESS: u8 = 0x02;
 
 impl Crazyradio {
     pub async fn open_nth_async(nth: usize) -> Result<Crazyradio> {
@@ -119,15 +122,39 @@ impl Crazyradio {
         JsFuture::from(device.open()).await?;
         JsFuture::from(device.claim_interface(0)).await?;
 
-        Ok(Self{device, current_channel: None})
+        Ok(Self{device, current_channel: None, current_address: None})
     }
 
-    pub async fn set_channel_async(&mut self, channel: Channel) -> Result<()> {
+    async fn set_address_async(&mut self, address: &[u8; 5]) -> Result<()> {
+        if self.current_address != Some(*address) {
+            let parameter = web_sys::UsbControlTransferParameters::new(
+                0,
+                web_sys::UsbRecipient::Device,
+                SET_RADIO_ADDRESS,
+                web_sys::UsbRequestType::Vendor,
+                0,
+            );
+        
+            let mut data = *address;
+            let transfer = self.device.control_transfer_out_with_u8_array(&parameter, &mut data);
+
+            let _ = JsFuture::from(transfer)
+                .await?
+                .dyn_into::<web_sys::UsbOutTransferResult>()
+                .unwrap();
+            
+            self.current_address = Some(*address);
+        }
+
+        Ok(())
+    }
+
+    async fn set_channel_async(&mut self, channel: Channel) -> Result<()> {
         if self.current_channel != Some(channel) {
             let parameter = web_sys::UsbControlTransferParameters::new(
                 0,
                 web_sys::UsbRecipient::Device,
-                0x01,
+                SET_RADIO_CHANNEL,
                 web_sys::UsbRequestType::Vendor,
                 channel.into(),
             );
@@ -135,7 +162,7 @@ impl Crazyradio {
             let mut data = [];
             let transfer = self.device.control_transfer_out_with_u8_array(&parameter, &mut data);
         
-            let _transfer = JsFuture::from(transfer)
+            let _ = JsFuture::from(transfer)
                 .await?
                 .dyn_into::<web_sys::UsbOutTransferResult>()
                 .unwrap();
@@ -146,7 +173,7 @@ impl Crazyradio {
         Ok(())
     }
 
-    pub async fn send_packet_async(&self, packet: Vec<u8>) -> Result<(Ack, Vec<u8>)> {
+    async fn send_packet_async(&self, packet: Vec<u8>) -> Result<(Ack, Vec<u8>)> {
         let mut packet = packet;
         JsFuture::from(self.device.transfer_out_with_u8_array(0x01, &mut packet)).await?;
 
