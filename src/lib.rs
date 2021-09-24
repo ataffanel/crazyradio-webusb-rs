@@ -30,10 +30,7 @@ use futures_util::lock::Mutex;
 
 type Result<T> = std::result::Result<T, Error>;
 
-pub struct SharedCrazyradio {
-    radio: Mutex<Crazyradio>,
-}
-
+/// Ack status
 #[derive(Default, Debug, Copy, Clone)]
 pub struct Ack {
     /// At true if an ack packet has been received
@@ -44,6 +41,11 @@ pub struct Ack {
     pub retry: usize,
     /// Length of the ack payload
     pub length: usize,
+}
+
+/// Shared Crazyradio
+pub struct SharedCrazyradio {
+    radio: Mutex<Crazyradio>,
 }
 
 impl SharedCrazyradio {
@@ -89,6 +91,10 @@ impl SharedCrazyradio {
     }
 }
 
+/// Crazyradio dongle
+///
+/// This struct only contains function to create a new `Crazyradio` object. It
+/// needs to be passed to the [SharedCrazyradio] to be used.
 pub struct Crazyradio {
     device: web_sys::UsbDevice,
     current_channel: Option<Channel>,
@@ -99,7 +105,15 @@ const SET_RADIO_CHANNEL: u8 = 0x01;
 const SET_RADIO_ADDRESS: u8 = 0x02;
 
 impl Crazyradio {
+    pub async fn open_first_async() -> Result<Crazyradio> {
+        Self::open_nth_async(0).await
+    }
+
     pub async fn open_nth_async(nth: usize) -> Result<Crazyradio> {
+        if nth != 0 {
+            return Err(Error::InvalidArgument);
+        }
+
         let window = web_sys::window().expect("No global 'window' exists!");
         let navigator: web_sys::Navigator = window.navigator();
         let usb = navigator.usb();
@@ -123,6 +137,26 @@ impl Crazyradio {
         JsFuture::from(device.claim_interface(0)).await?;
 
         Ok(Self{device, current_channel: None, current_address: None})
+    }
+
+    #[cfg(feature = "unstable")]
+    pub async fn list_serials_async() -> Result<Vec<String>> {
+        let window = web_sys::window().expect("No global 'window' exists!");
+        let navigator: web_sys::Navigator = window.navigator();
+        let usb = navigator.usb();
+
+        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.into();
+
+        let mut serials = Vec::new();
+
+        for device in devices.iter() {
+            let device = device.dyn_into::<web_sys::UsbDevice>().unwrap();
+            if let Some(serial) = device.serial_number() {
+                serials.push(serial);
+            }
+        }
+
+        Ok(serials)
     }
 
     async fn set_address_async(&mut self, address: &[u8; 5]) -> Result<()> {
@@ -211,12 +245,16 @@ impl Channel {
     }
 }
 
+// U8 -> Channel is not safe so we only implement Channel -> U8
+#[allow(clippy::from_over_into)]
 impl Into<u8> for Channel {
     fn into(self) -> u8 {
         self.0
     }
 }
 
+// U16 -> Channel is not safe so we only implement Channel -> U16
+#[allow(clippy::from_over_into)]
 impl Into<u16> for Channel {
     fn into(self) -> u16 {
         self.0.into()
