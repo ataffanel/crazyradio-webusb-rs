@@ -26,6 +26,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::JsFuture;
 
 use futures_util::lock::Mutex;
+use web_sys::UsbDevice;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -146,7 +147,31 @@ impl Crazyradio {
         })
     }
 
-    #[cfg(feature = "unstable")]
+    pub async fn open_by_serial_async(serial: &str) -> Result<Crazyradio> {
+        let window = web_sys::window().expect("No global 'window' exists!");
+        let navigator: web_sys::Navigator = window.navigator();
+        let usb = navigator.usb();
+
+        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.into();
+
+        // Find the serial number in the list of already paired radios
+        let device: web_sys::UsbDevice = devices
+            .find(&mut |device: JsValue, _, _| {
+                device.dyn_into::<UsbDevice>().unwrap().serial_number() == Some(serial.to_owned())
+            })
+            .dyn_into()
+            .map_err(|_| Error::NotFound)?;
+
+        JsFuture::from(device.open()).await?;
+        JsFuture::from(device.claim_interface(0)).await?;
+
+        Ok(Self {
+            device,
+            current_channel: None,
+            current_address: None,
+        })
+    }
+
     pub async fn list_serials_async() -> Result<Vec<String>> {
         let window = web_sys::window().expect("No global 'window' exists!");
         let navigator: web_sys::Navigator = window.navigator();

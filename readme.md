@@ -8,8 +8,8 @@ It implements the async API of the native [Crazyradio crate](https://crates.io/c
 ## Versioning
 
 This repos follows the version of the [crazyradio](https://crates.io/crates/crazyradio) crate.
-For example, version *0.2.x* of this crate implements the same async API subset as version *0.2.x*
-of the `crazyradio` crate. Not all function are implemented but the ones that are behaves the same way.
+For example, version *0.2.x* of this crate implements the same async API as version *0.2.x*
+of the `crazyradio` crate.
 
 This allows to 'duck type' this crate and the `crazyradio` crate, for example
 this is done in the `crazyflie-link` crate:
@@ -38,8 +38,14 @@ This lib can only open one radio when using the `Crazyradio::open_nth_async()` f
 This is only a UI limitation, not a hard one, see ticket #1 if you are interested
 in the problem and in helping resolving it.
 
-## Cargo features
+## Running tests
 
-The Cargo feature `untested` enables untested functions. Since WebUSB requires user interaction to
-display the device selection box, it is not clear how to test function in this crates only. The functions
-will be enabled by default when they are tested in downstream projects using this crate.
+A couple of tests can be run in a web browser using `wasm_bindgen_test`:
+
+```
+wasm-pack test --chrome
+```
+
+To run, there should be at least one Crazyradio connected and paired on the test url `http://localhost:8000`.
+The easiest to achieve that is to open the Crazyradio dongle from a development
+[Crazyflie web client](https://github.com/ataffanel/crazyflie-client-web).
