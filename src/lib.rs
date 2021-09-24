@@ -48,6 +48,11 @@ pub struct SharedCrazyradio {
     radio: Mutex<Crazyradio>,
 }
 
+/// Crazyradio sharable between uTasks/connections
+///
+/// Implement the same API as the Crazyradio crate's [SharedCrazyradio].
+///
+/// [SharedCrazyradio]: https://docs.rs/crazyradio/0.2.0/crazyradio/struct.SharedCrazyradio.html#impl-1
 impl SharedCrazyradio {
     pub fn new(radio: Crazyradio) -> Self {
         Self {
@@ -107,10 +112,33 @@ const SET_RADIO_CHANNEL: u8 = 0x01;
 const SET_RADIO_ADDRESS: u8 = 0x02;
 
 impl Crazyradio {
+    /// Open first available Crazyradio
+    ///
+    /// If no radio is paired in the current browser's tab, a pairing request will
+    /// be requested to the browser.
+    ///
+    /// ## Note
+    ///
+    /// If a pairing request is required, this function must be called from a user
+    /// interaction (eg. in response to a button/link click event). The [Crazyradio::list_serials_async()]
+    /// funtion can be called to find out if any radio is currently paired
     pub async fn open_first_async() -> Result<Crazyradio> {
         Self::open_nth_async(0).await
     }
 
+     /// Open nth available Crazyradio
+    ///
+    /// If no radio is paired in the current browser's tab, a pairing request will
+    /// be requested to the browser.
+    ///
+    /// ## Limitation
+    /// This function can currently be called only with the argument `0`, any other
+    /// value will return the error [Error::InvalidArgument]
+    ///
+    /// ## Note
+    /// If a pairing request is required, this function must be called from a user
+    /// interaction (eg. in response to a button/link click event). The [Crazyradio::list_serials_async()]
+    /// funtion can be called to find out if any radio is currently paired
     pub async fn open_nth_async(nth: usize) -> Result<Crazyradio> {
         if nth != 0 {
             return Err(Error::InvalidArgument);
@@ -134,7 +162,7 @@ impl Crazyradio {
             JsFuture::from(usb.request_device(&filter.into()))
                 .await?
                 .dyn_into()
-                .unwrap()
+                .map_err(|e| Error::BrowserError(format!("{:?}", e)))?
         };
 
         JsFuture::from(device.open()).await?;
@@ -147,6 +175,9 @@ impl Crazyradio {
         })
     }
 
+    /// Open radio by serial number
+    ///
+    /// This function will never trigger the browser to show the device pairing window.
     pub async fn open_by_serial_async(serial: &str) -> Result<Crazyradio> {
         let window = web_sys::window().expect("No global 'window' exists!");
         let navigator: web_sys::Navigator = window.navigator();
@@ -172,6 +203,7 @@ impl Crazyradio {
         })
     }
 
+    /// Return the list of serial number from Crazyradio that are both paired and currently connected
     pub async fn list_serials_async() -> Result<Vec<String>> {
         let window = web_sys::window().expect("No global 'window' exists!");
         let navigator: web_sys::Navigator = window.navigator();
