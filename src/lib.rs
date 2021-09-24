@@ -4,7 +4,7 @@
 //! It replicates the async API subset of the native [crazyradio crate](https://crates.io/crates/crazyradio).
 //!
 //! The main intention of this crate is to be used as a compile-time replacement
-//! for the native [crazyradio](https://github.com/ataffanel/crazyradio-rs) crate in 
+//! for the native [crazyradio](https://github.com/ataffanel/crazyradio-rs) crate in
 //! the [crazyflie-link](https://github.com/ataffanel/crazyflie-link-rs) crate.
 //! The async functions to create the crazyradio can be used and then
 //! the [Crazyradio] object must be passed and used though the [SharedCrazyradio]
@@ -19,10 +19,9 @@
 //! # }
 //! ```
 
-
 use std::convert::TryInto;
 
-use wasm_bindgen::{JsCast, prelude::*};
+use wasm_bindgen::{prelude::*, JsCast};
 
 use wasm_bindgen_futures::JsFuture;
 
@@ -50,7 +49,9 @@ pub struct SharedCrazyradio {
 
 impl SharedCrazyradio {
     pub fn new(radio: Crazyradio) -> Self {
-        Self { radio: Mutex::new(radio) }
+        Self {
+            radio: Mutex::new(radio),
+        }
     }
 
     pub async fn send_packet_async(
@@ -118,7 +119,8 @@ impl Crazyradio {
         let navigator: web_sys::Navigator = window.navigator();
         let usb = navigator.usb();
 
-        let filter: serde_json::Value = serde_json::from_str(r#"{ "filters": [{ "vendorId": 6421 }] }"#).unwrap();
+        let filter: serde_json::Value =
+            serde_json::from_str(r#"{ "filters": [{ "vendorId": 6421 }] }"#).unwrap();
         let filter = JsValue::from_serde(&filter).unwrap();
 
         let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.into();
@@ -130,13 +132,18 @@ impl Crazyradio {
         } else {
             JsFuture::from(usb.request_device(&filter.into()))
                 .await?
-                .dyn_into().unwrap()
+                .dyn_into()
+                .unwrap()
         };
 
         JsFuture::from(device.open()).await?;
         JsFuture::from(device.claim_interface(0)).await?;
 
-        Ok(Self{device, current_channel: None, current_address: None})
+        Ok(Self {
+            device,
+            current_channel: None,
+            current_address: None,
+        })
     }
 
     #[cfg(feature = "unstable")]
@@ -168,15 +175,17 @@ impl Crazyradio {
                 web_sys::UsbRequestType::Vendor,
                 0,
             );
-        
+
             let mut data = *address;
-            let transfer = self.device.control_transfer_out_with_u8_array(&parameter, &mut data);
+            let transfer = self
+                .device
+                .control_transfer_out_with_u8_array(&parameter, &mut data);
 
             let _ = JsFuture::from(transfer)
                 .await?
                 .dyn_into::<web_sys::UsbOutTransferResult>()
                 .unwrap();
-            
+
             self.current_address = Some(*address);
         }
 
@@ -192,18 +201,20 @@ impl Crazyradio {
                 web_sys::UsbRequestType::Vendor,
                 channel.into(),
             );
-        
+
             let mut data = [];
-            let transfer = self.device.control_transfer_out_with_u8_array(&parameter, &mut data);
-        
+            let transfer = self
+                .device
+                .control_transfer_out_with_u8_array(&parameter, &mut data);
+
             let _ = JsFuture::from(transfer)
                 .await?
                 .dyn_into::<web_sys::UsbOutTransferResult>()
                 .unwrap();
-            
+
             self.current_channel = Some(channel);
         }
-    
+
         Ok(())
     }
 
@@ -215,7 +226,7 @@ impl Crazyradio {
             .await?
             .dyn_into::<web_sys::UsbInTransferResult>()
             .unwrap();
-        
+
         let mut pk = Vec::new();
         for i in 1..data.data().unwrap().byte_length() {
             pk.push(data.data().unwrap().get_uint8(i));
@@ -268,7 +279,6 @@ impl TryInto<Channel> for u8 {
         Channel::from_number(self)
     }
 }
-
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
