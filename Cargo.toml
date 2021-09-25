@@ -1,6 +1,6 @@
 [package]
 name = "crazyradio-webusb"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Arnaud Taffanel <arnaud@taffanel.org>"]
 edition = "2018"
 description = "Crazyradio USB dongle driver for WebUSB"
@@ -44,5 +44,5 @@ features = [
   'UsbRequestType'
 ]
 
-[features]
-untested = []
+[package.metadata.docs.rs]
+rustc-args = ["--cfg=web_sys_unstable_apis"]
