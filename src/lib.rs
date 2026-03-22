@@ -20,6 +20,7 @@
 //! ```
 
 use std::convert::TryInto;
+use std::sync::{Arc, Weak};
 
 use wasm_bindgen::{prelude::*, JsCast};
 
@@ -41,11 +42,32 @@ pub struct Ack {
     pub retry: usize,
     /// Length of the ack payload
     pub length: usize,
+    /// RSSI value in dBm. WebUSB does not provide RSSI data, so this is always None.
+    pub rssi_dbm: Option<i16>,
 }
 
 /// Shared Crazyradio
+#[derive(Clone)]
 pub struct SharedCrazyradio {
-    radio: Mutex<Crazyradio>,
+    radio: Arc<Mutex<Crazyradio>>,
+}
+
+/// Weak reference to a SharedCrazyradio.
+///
+/// Can be upgraded to a `SharedCrazyradio` if the radio is still alive.
+/// Mirrors the native crazyradio crate's `WeakSharedCrazyradio` type.
+#[derive(Clone, Default)]
+pub struct WeakSharedCrazyradio {
+    radio: Weak<Mutex<Crazyradio>>,
+}
+
+impl WeakSharedCrazyradio {
+    /// Attempt to upgrade to a `SharedCrazyradio`.
+    ///
+    /// Returns `None` if the underlying radio has been dropped.
+    pub fn upgrade(&self) -> Option<SharedCrazyradio> {
+        self.radio.upgrade().map(|radio| SharedCrazyradio { radio })
+    }
 }
 
 /// Crazyradio sharable between uTasks/connections
@@ -56,7 +78,14 @@ pub struct SharedCrazyradio {
 impl SharedCrazyradio {
     pub fn new(radio: Crazyradio) -> Self {
         Self {
-            radio: Mutex::new(radio),
+            radio: Arc::new(Mutex::new(radio)),
+        }
+    }
+
+    /// Downgrade to a `WeakSharedCrazyradio`.
+    pub fn downgrade(&self) -> WeakSharedCrazyradio {
+        WeakSharedCrazyradio {
+            radio: Arc::downgrade(&self.radio),
         }
     }
 
