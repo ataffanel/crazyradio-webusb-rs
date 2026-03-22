@@ -152,7 +152,7 @@ impl Crazyradio {
             serde_json::from_str(r#"{ "filters": [{ "vendorId": 6421 }] }"#).unwrap();
         let filter = JsValue::from_serde(&filter).unwrap();
 
-        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.into();
+        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.dyn_into().unwrap();
 
         // Open radio if one is already paired and plugged
         // Otherwise ask the user to pair a new radio
@@ -183,7 +183,7 @@ impl Crazyradio {
         let navigator: web_sys::Navigator = window.navigator();
         let usb = navigator.usb();
 
-        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.into();
+        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.dyn_into().unwrap();
 
         // Find the serial number in the list of already paired radios
         let device: web_sys::UsbDevice = devices
@@ -209,7 +209,7 @@ impl Crazyradio {
         let navigator: web_sys::Navigator = window.navigator();
         let usb = navigator.usb();
 
-        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.into();
+        let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.dyn_into().unwrap();
 
         let mut serials = Vec::new();
 
@@ -233,10 +233,11 @@ impl Crazyradio {
                 0,
             );
 
-            let mut data = *address;
+            let data = js_sys::Uint8Array::from(&address[..]);
             let transfer = self
                 .device
-                .control_transfer_out_with_u8_array(&parameter, &mut data);
+                .control_transfer_out_with_u8_array(&parameter, &data)
+                .map_err(|e| Error::BrowserError(format!("{:?}", e)))?;
 
             let _ = JsFuture::from(transfer)
                 .await?
@@ -259,10 +260,11 @@ impl Crazyradio {
                 channel.into(),
             );
 
-            let mut data = [];
+            let data = js_sys::Uint8Array::from(&[][..]);
             let transfer = self
                 .device
-                .control_transfer_out_with_u8_array(&parameter, &mut data);
+                .control_transfer_out_with_u8_array(&parameter, &data)
+                .map_err(|e| Error::BrowserError(format!("{:?}", e)))?;
 
             let _ = JsFuture::from(transfer)
                 .await?
@@ -276,8 +278,8 @@ impl Crazyradio {
     }
 
     async fn send_packet_async(&self, packet: Vec<u8>) -> Result<(Ack, Vec<u8>)> {
-        let mut packet = packet;
-        JsFuture::from(self.device.transfer_out_with_u8_array(0x01, &mut packet)).await?;
+        let packet_array = js_sys::Uint8Array::from(&packet[..]);
+        JsFuture::from(self.device.transfer_out_with_u8_array(0x01, &packet_array).map_err(|e| Error::BrowserError(format!("{:?}", e)))?).await?;
 
         let data = JsFuture::from(self.device.transfer_in(0x01, 64))
             .await?
