@@ -22,6 +22,8 @@
 use std::convert::TryInto;
 use std::sync::{Arc, Weak};
 
+#[cfg(feature = "serde_support")]
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
 use wasm_bindgen_futures::JsFuture;
@@ -137,8 +139,15 @@ pub struct Crazyradio {
     current_address: Option<[u8; 5]>,
 }
 
+const CRAZYRADIO_VENDOR_ID: u16 = 0x1915;
 const SET_RADIO_CHANNEL: u8 = 0x01;
 const SET_RADIO_ADDRESS: u8 = 0x02;
+
+fn crazyradio_request_options() -> web_sys::UsbDeviceRequestOptions {
+    let filter = web_sys::UsbDeviceFilter::new();
+    filter.set_vendor_id(CRAZYRADIO_VENDOR_ID);
+    web_sys::UsbDeviceRequestOptions::new(&[filter])
+}
 
 impl Crazyradio {
     /// Open first available Crazyradio
@@ -155,7 +164,7 @@ impl Crazyradio {
         Self::open_nth_async(0).await
     }
 
-     /// Open nth available Crazyradio
+    /// Open nth available Crazyradio
     ///
     /// If no radio is paired in the current browser's tab, a pairing request will
     /// be requested to the browser.
@@ -177,9 +186,7 @@ impl Crazyradio {
         let navigator: web_sys::Navigator = window.navigator();
         let usb = navigator.usb();
 
-        let filter: serde_json::Value =
-            serde_json::from_str(r#"{ "filters": [{ "vendorId": 6421 }] }"#).unwrap();
-        let filter = JsValue::from_serde(&filter).unwrap();
+        let request_options = crazyradio_request_options();
 
         let devices: js_sys::Array = JsFuture::from(usb.get_devices()).await?.dyn_into().unwrap();
 
@@ -188,7 +195,7 @@ impl Crazyradio {
         let device: web_sys::UsbDevice = if devices.length() > 0 {
             devices.get(0).dyn_into().unwrap()
         } else {
-            JsFuture::from(usb.request_device(&filter.into()))
+            JsFuture::from(usb.request_device(&request_options))
                 .await?
                 .dyn_into()
                 .map_err(|e| Error::BrowserError(format!("{:?}", e)))?
@@ -308,7 +315,12 @@ impl Crazyradio {
 
     async fn send_packet_async(&self, packet: Vec<u8>) -> Result<(Ack, Vec<u8>)> {
         let packet_array = js_sys::Uint8Array::from(&packet[..]);
-        JsFuture::from(self.device.transfer_out_with_u8_array(0x01, &packet_array).map_err(|e| Error::BrowserError(format!("{:?}", e)))?).await?;
+        JsFuture::from(
+            self.device
+                .transfer_out_with_u8_array(0x01, &packet_array)
+                .map_err(|e| Error::BrowserError(format!("{:?}", e)))?,
+        )
+        .await?;
 
         let data = JsFuture::from(self.device.transfer_in(0x01, 64))
             .await?
@@ -333,6 +345,18 @@ impl Crazyradio {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde_support", derive(Serialize))]
 pub struct Channel(u8);
+
+#[cfg(feature = "serde_support")]
+impl<'de> Deserialize<'de> for Channel {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Channel, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let channel_number: u8 = Deserialize::deserialize(deserializer)?;
+        Channel::from_number(channel_number)
+            .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+    }
+}
 
 impl Channel {
     pub fn from_number(channel: u8) -> Result<Self> {
@@ -383,5 +407,35 @@ pub enum Error {
 impl From<JsValue> for Error {
     fn from(e: JsValue) -> Self {
         Self::BrowserError(format!("{:?}", e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "serde_support")]
+    use super::Channel;
+
+    #[cfg(feature = "serde_support")]
+    #[test]
+    fn deserializes_valid_channel() {
+        let result: Result<Channel, serde_json::Error> = serde_json::from_str("42");
+
+        assert!(matches!(result, Ok(Channel(42))));
+    }
+
+    #[cfg(feature = "serde_support")]
+    #[test]
+    fn rejects_invalid_channel_when_deserializing() {
+        let result: Result<Channel, serde_json::Error> = serde_json::from_str("126");
+
+        assert!(matches!(result, Err(_)));
+    }
+
+    #[cfg(feature = "serde_support")]
+    #[test]
+    fn serializes_channel_as_number() {
+        let result = serde_json::to_string(&Channel(42));
+
+        assert!(matches!(result, Ok(serialized) if serialized == "42"));
     }
 }
